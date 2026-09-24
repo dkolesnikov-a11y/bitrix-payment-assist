@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+secrets/
+*api-key*
+config.local.json
+var/
+node_modules/
+*.log
+*.sqlite*
+*.pem
+*.key
