@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {Store} from '../src/store.mjs';
+import {processPayments} from '../src/payments.mjs';
+test('payment worker requires disclosed consent and allowlist, persists once and survives repeated cycles',async t=>{
+ const dir=mkdtempSync(join(tmpdir(),'worker-')),store=new Store(join(dir,'db'));t.after(()=>{store.close();rmSync(dir,{recursive:true,force:true});});
+ const body={paymentAuthorizedOnConfirm:false,payment:{amountCents:4000,currency:'RUB',direction:'incoming',status:'credited',bankReference:'TEST',date:'2026-09-18'},selected:{id:1,companyId:103,mycompanyId:2281,balanceCents:10000,recipientConfirmed:true,number:'test'},recipientReply:{author:49}};
+ store.db.prepare('INSERT INTO payment_dialogs VALUES(?,?,?,?,?,?)').run('1',0,'49',49,'review_ready',JSON.stringify(body));
+ let writes=0;const s={store,config:{crmWrites:true,invoiceAllowlist:[1],allowedUsers:[49],allowedDialogs:['49']},vibe:{read:async()=>({id:1,parentId2:2,companyId:103,mycompanyId:2281,categoryId:31,currencyId:'RUB',opportunity:100,updatedTime:'v1',stageId:'DT1078_31:UC_WEUS73',ufCrm23_1770921060:'',ufCrm23_1770923673:'100|RUB'})},journal:{db:{prepare:()=>({get:()=>null})},get:()=>null},guard:{execute:async()=>{writes++;assert.ok(JSON.parse(store.db.prepare('SELECT body FROM payment_dialogs').get().body).paymentSpec);return {status:'confirmed',evidence:{after:{balanceCents:6000}}};}}};
+ await processPayments(s);assert.equal(writes,0);
+ body.paymentAuthorizedOnConfirm=true;store.db.prepare('UPDATE payment_dialogs SET body=?').run(JSON.stringify(body));s.config.invoiceAllowlist=[];await processPayments(s);assert.equal(writes,0);
+ s.config.invoiceAllowlist=[1];await processPayments(s);await processPayments(s);assert.equal(writes,1);assert.equal(store.db.prepare('SELECT state FROM payment_dialogs').get().state,'paid');assert.equal(store.db.prepare('SELECT count(*) n FROM outbox').get().n,1);assert.match(store.db.prepare('SELECT text FROM outbox').get().text,/details\/1\//);
+ body.paymentAuthorizedOnConfirm=false;delete body.recipientReply;body.autoAuthorization={rule:'exact-client-balance-v2'};
+ store.db.prepare("UPDATE payment_dialogs SET state='review_ready',body=?").run(JSON.stringify(body));
+ s.config.automatic={enabled:true,fromEventId:2};await processPayments(s);assert.equal(writes,1);
+ s.config.automatic.fromEventId=1;await processPayments(s);assert.equal(writes,2);assert.equal(store.db.prepare('SELECT state FROM payment_dialogs').get().state,'paid');
+});

@@ -1,0 +1,13 @@
+{
+  "name": "bitrix-payment-assistant",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node src/main.mjs",
+    "demo": "node src/demo.mjs",
+    "test": "node --test tools/payment-safety/guard.test.mjs tools/payment-safety/recovery.test.mjs test/service.test.mjs test/vibe-ocr.test.mjs test/matching.test.mjs test/dialog.test.mjs test/payments.test.mjs test/automatic.test.mjs test/access.test.mjs test/team.test.mjs test/payment-regressions.test.mjs test/chat-regressions.test.mjs"
+  }
+}
